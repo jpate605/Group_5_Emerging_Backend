@@ -5,20 +5,17 @@ const { generateToken, validateUserCredentials } = require("../utils/auth");
 const User = require("../models/User");
 
 router.post("/login", async (req, res) => {
-  console.log(req.body);
+  console.log("Request Body:", req.body);
   try {
     const { username, password } = req.body;
-    if (!username) {
-      throw new Error("Username is required");
-    }
-    if (!password) {
-      throw new Error("Password is required");
+    if (!username || !password) {
+      throw new Error("Username and password are required");
     }
 
     const user = await validateUserCredentials(username, password);
-    const { role, id } = user;
-    const token = generateToken(user._id);
-    res.json({ token, id, role });
+    const { role, _id } = user;
+    const token = generateToken(_id);
+    res.json({ token, id: _id, role });
   } catch (error) {
     res.status(400).send(error.message);
   }
@@ -36,8 +33,7 @@ router.post("/register", async (req, res) => {
       throw new Error("User already exists");
     }
 
-    const hashedPassword = await bcrypt.hash(password, 12);
-    const newUser = new User({ username, password: hashedPassword, role });
+    const newUser = new User({ username, password, role });
     await newUser.save();
 
     const token = generateToken(newUser._id);
