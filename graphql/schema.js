@@ -4,12 +4,14 @@ const VitalSigns = require("../models/VitalSign");
 const DailyInfo = require("../models/DailyInfo");
 const Symptoms = require("../models/Symptoms");
 const bcrypt = require("bcryptjs");
+const { generateToken, validateUserCredentials } = require("../utils/auth");
 
 const schema = buildSchema(`
     type User {
         id: ID!
-        username: String!
-        role: String!
+        email: String!
+        roleId: String!
+        token: String!
     }
 
     type VitalSigns {
@@ -54,11 +56,16 @@ const schema = buildSchema(`
     }
 
     type Mutation {
-        register(username: String!, password: String!, role: String!): User
+        register(username: String!, password: String!, role: String!): AuthPayload
         login(username: String!, password: String!): User
         recordVitalSigns(nurseUsername: String!, patientId: ID!, bodyTemperature: Float, heartRate: Float, bloodPressure: String, respiratoryRate: Float): VitalSigns
         recordDailyInfo(patientUsername: String!, pulseRate: Float, bloodPressure: String, weight: Float, temperature: Float, respiratoryRate: Float): DailyInfo
         recordSymptoms(patientUsername: String!, symptomsList: [String]!): Symptoms
+    }
+
+    type AuthPayload {
+      user: User!
+      token: String!
     }
 `);
 
@@ -112,18 +119,25 @@ const root = {
     }
     const hashedPassword = await bcrypt.hash(password, 12);
     const newUser = new User({ username, password: hashedPassword, role });
-    return newUser.save();
+    await newUser.save();
+    const token = generateToken(newUser._id);
+    return { user: newUser, token };
   },
-  login: async ({ username, password }) => {
-    const user = await User.findOne({ username });
-    if (!user) {
-      throw new Error("User not found");
-    }
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) {
-      throw new Error("Incorrect password");
-    }
-    return user;
+
+  login: async (_, { username, password }) => {
+    // Validate user credentials and get user info
+    const user = await validateUserCredentials(username, password);
+
+    // Generate token for user
+    const token = generateToken(user._id);
+
+    // Return user object with token
+    return {
+      id: user._id,
+      username: user.username,
+      role: user.role,
+      token: token,
+    };
   },
   recordVitalSigns: async ({
     nurseUsername,
