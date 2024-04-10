@@ -1,18 +1,57 @@
-const mongoose = require("mongoose");
-const bcrypt = require("bcryptjs");
+const mongoose = require('mongoose')
+const bcrypt = require('bcrypt')
+const {isEmail} = require('validator')
+
+// Function to convert values to lowercase
+const lowercaseTransform = function (value) {
+    return value.toLowerCase();
+};
 
 const userSchema = new mongoose.Schema({
-  username: { type: String, unique: true, required: true },
-  password: { type: String, required: true },
-  role: { type: String, required: true },
-});
+    email: {
+        type: String,
+        required: [true, 'Please enter an email!'],
+        unique: true,
+        lowercase: true,
+        validator: [isEmail, 'Please enter a valid email!']
+    },
+    password: {
+        type: String,
+        required: [true, 'Please enter password!'],
+        minlength: [6, 'Min length of password is 6']
+    },
+    roleId: {
+        type: String,
+        enum: ['nurse', 'patient'],
+        transform: lowercaseTransform,
+        required: true
+    }
+})
 
-// Hash password before saving
-userSchema.pre("save", async function (next) {
-  if (this.isModified("password")) {
-    this.password = await bcrypt.hash(this.password, 12);
-  }
-  next();
-});
+// salting and hashing the password
+userSchema.pre('save', async function(next){
+    const salt = await bcrypt.genSalt();
+    this.password = await bcrypt.hash(this.password, salt);
+    next();
+})
 
-module.exports = mongoose.model("User", userSchema);
+userSchema.statics.login =  async function(email, password)
+{
+    const user = await this.findOne({email});
+    if(user)
+    {
+       const isAuth = await bcrypt.compare(password, user.password);
+       if(isAuth)
+       {
+        return user;
+       }
+       throw Error('Incorrect password')
+    }
+    else{
+        throw Error('Incorrect email')
+    }
+}
+
+const User = mongoose.model('user', userSchema);
+
+module.exports = User;

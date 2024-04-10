@@ -9,8 +9,8 @@ const { generateToken, validateUserCredentials } = require("../utils/auth");
 const schema = buildSchema(`
     type User {
         id: ID!
-        username: String!
-        role: String!
+        email: String!
+        roleId: String!
         token: String!
     }
 
