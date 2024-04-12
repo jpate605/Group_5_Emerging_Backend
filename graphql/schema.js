@@ -3,15 +3,12 @@ const User = require("../models/User");
 const VitalSigns = require("../models/VitalSign");
 const DailyInfo = require("../models/DailyInfo");
 const Symptoms = require("../models/Symptoms");
-const bcrypt = require("bcryptjs");
-const { generateToken, validateUserCredentials } = require("../utils/auth");
 
 const schema = buildSchema(`
     type User {
         id: ID!
         email: String!
         roleId: String!
-        token: String!
     }
 
     type VitalSigns {
@@ -49,35 +46,33 @@ const schema = buildSchema(`
         users: [User]
         nurses: [User]
         patients: [User]
-        getVitalSignsByPatientUsername(patientUsername: String!): [VitalSigns]
-        getDailyInfoByPatientUsername(patientUsername: String!): [DailyInfo]
-        getSymptomsByPatientUsername(patientUsername: String!): [Symptoms]
+        getVitalSignsByNurseId(nurseId: String!): [VitalSigns]
+        getDailyInfoByPatientId(patientId: String!): [DailyInfo]
+        getSymptomsByPatientId(patientId: String!): [Symptoms]
         currentUser: User
     }
 
     type Mutation {
-        register(username: String!, password: String!, role: String!): AuthPayload
-        login(username: String!, password: String!): User
-        recordVitalSigns(nurseUsername: String!, patientId: ID!, bodyTemperature: Float, heartRate: Float, bloodPressure: String, respiratoryRate: Float): VitalSigns
-        recordDailyInfo(patientUsername: String!, pulseRate: Float, bloodPressure: String, weight: Float, temperature: Float, respiratoryRate: Float): DailyInfo
-        recordSymptoms(patientUsername: String!, symptomsList: [String]!): Symptoms
-    }
-
-    type AuthPayload {
-      user: User!
-      token: String!
+        recordVitalSigns(nurseId: String!, patientId: ID!, bodyTemperature: Float, heartRate: Float, bloodPressure: String, respiratoryRate: Float): VitalSigns
+        recordDailyInfo(patientId: String!, pulseRate: Float, bloodPressure: String, weight: Float, temperature: Float, respiratoryRate: Float): DailyInfo
+        recordSymptoms(patientId: String!, symptomsList: [String]!): Symptoms
     }
 `);
 
 const root = {
   users: () => User.find(),
-  nurses: () => User.find({ role: "nurse" }),
-  patients: () => User.find({ role: "patient" }),
-  getDailyInfoByPatientUsername: async ({ patientUsername }) => {
-    const patient = await User.findOne({
-      username: patientUsername,
-      role: "patient",
-    });
+  nurses: () => User.find({ roleId: "nurse" }),
+  patients: () => User.find({ roleId: "patient" }),
+  getVitalSignsByNurseId: async ({nurseId}) => {
+    const nurse = await User.findById(nurseId);
+    if(!nurse) {
+      throw new Error("Nurse not found");
+    }
+    const vitalSigns = await VitalSigns.find({ nurseId: nurse._id}).sort('createdAt');
+    return vitalSigns;
+  },
+  getDailyInfoByPatientId: async ({ patientId }) => {
+    const patient = await User.findById(patientId);
     if (!patient) {
       throw new Error("Patient not found");
     }
@@ -85,8 +80,8 @@ const root = {
       createdAt: -1,
     });
   },
-  getSymptomsByPatientUsername: async ({ patientUsername }) => {
-    const patient = await User.findOne({ username: patientUsername });
+  getSymptomsByPatientId: async ({ patientId }) => {
+    const patient = await User.findById(patientId);
     if (!patient) {
       throw new Error("Patient not found");
     }
@@ -94,63 +89,15 @@ const root = {
       createdAt: -1,
     });
   },
-  getVitalSignsByPatientUsername: async ({ patientUsername }) => {
-    const patient = await User.findOne({
-      username: patientUsername,
-      role: "patient",
-    });
-    if (!patient) {
-      throw new Error("Patient not found");
-    }
-    const vitalSigns = await VitalSigns.find({ patientId: patient._id })
-      .populate("nurseId", "username")
-      .lean();
-    return vitalSigns.map((vs) => ({
-      ...vs,
-      nurseId: vs.nurseId.username,
-      id: vs._id.toString(),
-      patientId: vs.patientId.toString(),
-    }));
-  },
-  register: async ({ username, password, role }) => {
-    const existingUser = await User.findOne({ username });
-    if (existingUser) {
-      throw new Error("User already exists");
-    }
-    const hashedPassword = await bcrypt.hash(password, 12);
-    const newUser = new User({ username, password: hashedPassword, role });
-    await newUser.save();
-    const token = generateToken(newUser._id);
-    return { user: newUser, token };
-  },
-
-  login: async (_, { username, password }) => {
-    // Validate user credentials and get user info
-    const user = await validateUserCredentials(username, password);
-
-    // Generate token for user
-    const token = generateToken(user._id);
-
-    // Return user object with token
-    return {
-      id: user._id,
-      username: user.username,
-      role: user.role,
-      token: token,
-    };
-  },
   recordVitalSigns: async ({
-    nurseUsername,
+    nurseId,
     patientId,
     bodyTemperature,
     heartRate,
     bloodPressure,
     respiratoryRate,
   }) => {
-    const nurse = await User.findOne({
-      username: nurseUsername,
-      role: "nurse",
-    });
+    const nurse = await User.findById(nurseId);
     if (!nurse) {
       throw new Error("Nurse not found");
     }
@@ -177,20 +124,19 @@ const root = {
   },
 
   recordDailyInfo: async ({
-    patientUsername,
+    patientId,
     pulseRate,
     bloodPressure,
     weight,
     temperature,
     respiratoryRate,
   }) => {
-    const patient = await User.findOne({
-      username: patientUsername,
-      role: "patient",
-    });
+    const patient = await User.findById(patientId);
     if (!patient) {
       throw new Error("Patient not found");
     }
+    //overwrite other data of same patient
+    await DailyInfo.deleteMany({patientId: patient._id});
     try {
       const newDailyInfo = new DailyInfo({
         patientId: patient._id,
@@ -207,9 +153,9 @@ const root = {
     }
   },
 
-  recordSymptoms: async ({ patientUsername, symptomsList }) => {
+  recordSymptoms: async ({ patientId, symptomsList }) => {
     // Find the patient by username
-    const patient = await User.findOne({ username: patientUsername });
+    const patient = await User.findById(patientId);
     if (!patient) {
       throw new Error("Patient not found");
     }
