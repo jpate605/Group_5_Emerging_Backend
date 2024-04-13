@@ -15,6 +15,19 @@ const userSchema = new mongoose.Schema({
         lowercase: true,
         validator: [isEmail, 'Please enter a valid email!']
     },
+    name: {
+        type: String,
+        required: [true, "Please enter a valid name!"],
+    },
+    age:{
+        type: Number,
+        required: [true, "Please enter a valid age!"],
+    },
+    gender: {
+        type: String,
+        enum: ['male', 'female', 'other'],
+        required: true,
+    },
     password: {
         type: String,
         required: [true, 'Please enter password!'],

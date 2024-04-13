@@ -8,6 +8,9 @@ const schema = buildSchema(`
     type User {
         id: ID!
         email: String!
+        name: String!
+        gender: String!
+        age: Int!
         roleId: String!
     }
 
