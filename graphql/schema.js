@@ -52,6 +52,7 @@ const schema = buildSchema(`
         getVitalSignsByNurseId(nurseId: String!): [VitalSigns]
         getDailyInfoByPatientId(patientId: String!): [DailyInfo]
         getSymptomsByPatientId(patientId: String!): [Symptoms]
+        getPatientInfoById(patientId: String!): User
         currentUser: User
     }
 
@@ -88,9 +89,10 @@ const root = {
     if (!patient) {
       throw new Error("Patient not found");
     }
-    return await Symptoms.find({ patientId: patient._id }).sort({
-      createdAt: -1,
-    });
+    return await Symptoms.find({ patientId: patient._id });
+  },
+  getPatientInfoById: async ({patientId}) => {
+    return await User.findById(patientId);
   },
   recordVitalSigns: async ({
     nurseId,
